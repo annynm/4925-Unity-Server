@@ -1,12 +1,67 @@
 import express from "express";
 import bodyParser from "body-parser";
 import bcrypt from "bcryptjs";
+import cors from "cors";
 import { query, initDb } from "../database/db.js";
 import dotenv from "dotenv";
 
 dotenv.config();
 
 const app = express();
+
+const allowedOrigins = [
+  /^http:\/\/localhost:\d+$/,
+  /^http:\/\/127\.0\.0\.1:\d+$/,
+  "https://yourgame.com",
+  "https://www.yourgamesite.com",
+  "https://*.itch.io",
+  "https://*.unity3dusercontent.com",
+  "http://localhost:8080",
+  "http://localhost:3000",
+  "null",
+];
+
+app.use(cors({
+  origin: function (origin, callback) {
+    if (!origin) {
+      return callback(null, true);
+    }
+    
+    for (const allowedOrigin of allowedOrigins) {
+      if (typeof allowedOrigin === 'string') {
+        if (allowedOrigin === origin) {
+          return callback(null, true);
+        }
+      } else if (allowedOrigin instanceof RegExp) {
+        if (allowedOrigin.test(origin)) {
+          return callback(null, true);
+        }
+      }
+    }
+    
+    console.log(`Blocked by CORS: ${origin}`);
+    callback(new Error('Not allowed by CORS'));
+  },
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS", "HEAD"],
+  allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
+  exposedHeaders: ["Content-Length", "X-Request-Id"],
+  credentials: false,
+  maxAge: 86400,
+}));
+
+app.options("*", cors());
+
+app.use((req, res, next) => {
+  res.header("X-Content-Type-Options", "nosniff");
+  res.header("X-Frame-Options", "DENY");
+  res.header("X-XSS-Protection", "1; mode=block");
+  
+  if (req.method === 'OPTIONS') {
+    res.header('Access-Control-Max-Age', '86400');
+  }
+  
+  next();
+});
 
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
@@ -19,6 +74,23 @@ app.use(async (req, res, next) => {
     dbInitialized = true;
   }
   next();
+});
+
+app.get("/", (req, res) => {
+  res.json({ 
+    message: "Unity Game API", 
+    endpoints: ["/register", "/login", "/users", "/health", "/unity-test"],
+    cors: "configured"
+  });
+});
+
+app.get("/unity-test", (req, res) => {
+  res.json({
+    unityCompatible: true,
+    timestamp: new Date().toISOString(),
+    cors: "enabled",
+    instructions: "Use UnityWebRequest or WWW class to call this API"
+  });
 });
 
 app.post("/register", async (req, res) => {
@@ -88,6 +160,7 @@ app.post("/login", async (req, res) => {
         userid: user.userid,
         username: user.username,
       },
+      token: null,
     });
   } catch (error) {
     console.error("Login error:", error);
@@ -106,7 +179,16 @@ app.get("/users", async (req, res) => {
 });
 
 app.get("/health", (req, res) => {
-  res.json({ status: "OK", database: "Connected" });
+  res.json({ 
+    status: "OK", 
+    database: "Connected",
+    cors: "configured",
+    unityCompatible: true
+  });
+});
+
+app.use((req, res) => {
+  res.status(404).json({ error: "Endpoint not found" });
 });
 
 export default app;
