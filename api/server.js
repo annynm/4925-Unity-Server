@@ -1,7 +1,6 @@
 import express from "express";
 import bodyParser from "body-parser";
 import bcrypt from "bcryptjs";
-import cors from "cors";
 import { query, initDb } from "../database/db.js";
 import dotenv from "dotenv";
 
@@ -21,45 +20,62 @@ const allowedOrigins = [
   "null",
 ];
 
-app.use(cors({
-  origin: function (origin, callback) {
-    if (!origin) {
-      return callback(null, true);
-    }
-    
-    for (const allowedOrigin of allowedOrigins) {
-      if (typeof allowedOrigin === 'string') {
-        if (allowedOrigin === origin) {
-          return callback(null, true);
-        }
-      } else if (allowedOrigin instanceof RegExp) {
-        if (allowedOrigin.test(origin)) {
-          return callback(null, true);
-        }
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  
+  if (!origin) {
+    res.header("Access-Control-Allow-Origin", "*");
+    res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS, HEAD");
+    res.header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With");
+    res.header("Access-Control-Expose-Headers", "Content-Length, X-Request-Id");
+    res.header("Access-Control-Max-Age", "86400");
+    return next();
+  }
+  
+  let isAllowed = false;
+  
+  for (const allowedOrigin of allowedOrigins) {
+    if (typeof allowedOrigin === 'string') {
+      if (allowedOrigin === origin) {
+        isAllowed = true;
+        break;
+      }
+    } else if (allowedOrigin instanceof RegExp) {
+      if (allowedOrigin.test(origin)) {
+        isAllowed = true;
+        break;
       }
     }
-    
+  }
+  
+  if (isAllowed) {
+    res.header("Access-Control-Allow-Origin", origin);
+    res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS, HEAD");
+    res.header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With");
+    res.header("Access-Control-Expose-Headers", "Content-Length, X-Request-Id");
+    res.header("Access-Control-Max-Age", "86400");
+    res.header("Access-Control-Allow-Credentials", "false");
+  } else {
     console.log(`Blocked by CORS: ${origin}`);
-    callback(new Error('Not allowed by CORS'));
-  },
-  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS", "HEAD"],
-  allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
-  exposedHeaders: ["Content-Length", "X-Request-Id"],
-  credentials: false,
-  maxAge: 86400,
-}));
+    return res.status(403).json({ error: "Not allowed by CORS" });
+  }
+  
+  next();
+});
 
-app.options("*", cors());
+app.options("*", (req, res) => {
+  res.header("Access-Control-Allow-Origin", req.headers.origin || "*");
+  res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS, HEAD");
+  res.header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With");
+  res.header("Access-Control-Max-Age", "86400");
+  res.header("Access-Control-Allow-Credentials", "false");
+  res.sendStatus(200);
+});
 
 app.use((req, res, next) => {
   res.header("X-Content-Type-Options", "nosniff");
   res.header("X-Frame-Options", "DENY");
   res.header("X-XSS-Protection", "1; mode=block");
-  
-  if (req.method === 'OPTIONS') {
-    res.header('Access-Control-Max-Age', '86400');
-  }
-  
   next();
 });
 
@@ -78,18 +94,15 @@ app.use(async (req, res, next) => {
 
 app.get("/", (req, res) => {
   res.json({ 
-    message: "Unity Game API", 
-    endpoints: ["/register", "/login", "/users", "/health", "/unity-test"],
-    cors: "configured"
+    status: "API is running",
+    version: "1.0.0"
   });
 });
 
 app.get("/unity-test", (req, res) => {
   res.json({
-    unityCompatible: true,
-    timestamp: new Date().toISOString(),
-    cors: "enabled",
-    instructions: "Use UnityWebRequest or WWW class to call this API"
+    status: "ok",
+    timestamp: new Date().toISOString()
   });
 });
 
@@ -181,9 +194,7 @@ app.get("/users", async (req, res) => {
 app.get("/health", (req, res) => {
   res.json({ 
     status: "OK", 
-    database: "Connected",
-    cors: "configured",
-    unityCompatible: true
+    database: "Connected"
   });
 });
 
